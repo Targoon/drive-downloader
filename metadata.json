@@ -1,0 +1,5 @@
+{
+  "name": "Google Drive Shared File Downloader",
+  "description": "A web application to browse, manage, and download files and folders from your Google Drive's 'Shared with me' section. It features folder navigation, recursive size calculation, and a download queue.",
+  "requestFramePermissions": []
+}

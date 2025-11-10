@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google Drive "Shared with me" Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "react": "https://esm.sh/react@18.2.0"
+      }
+    }
+    </script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-100 dark:bg-gray-900">
+    <div id="root"></div>
+    <script type="module">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
+// --- START OF APPLICATION CODE ---
+
+// === CONSTANTS ===
+// IMPORTANT: Replace with your own credentials from Google Cloud Console
+const CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
+const API_KEY = 'YOUR_API_KEY';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+
+const GOOGLE_DOCS_MIMETYPES = {
+    'application/vnd.google-apps.document': { exportMimeType: 'application/pdf', extension: '.pdf' },
+    'application/vnd.google-apps.spreadsheet': { exportMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', extension: '.xlsx' },
+    'application/vnd.google-apps.presentation': { exportMimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', extension: '.pptx' },
+    'application/vnd.google-apps.drawing': { exportMimeType: 'image/png', extension: '.png' },
+    'application/vnd.google-apps.form': { exportMimeType: 'application/zip', extension: '.zip' },
+    'application/vnd.google-apps.sites': { exportMimeType: 'application/zip', extension: '.zip' },
+};
+
+// === ICONS (React Components) ===
+const FolderIcon = ({ className }) => React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { d: "M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" }));
+const FileIcon = ({ className }) => React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { fillRule: "evenodd", d: "M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm5 1a1 1 0 00-1 1v1a1 1 0 102 0V6a1 1 0 00-1-1z", clipRule: "evenodd" }));
+const GoogleDocIcon = ({ className }) => React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { fillRule: "evenodd", d: "M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm1 5a1 1 0 000 2h10a1 1 0 100-2H5zm0 4a1 1 0 100 2h10a1 1 0 100-2H5zm0 4a1 1 0 100 2h4a1 1 0 100-2H5z", clipRule: "evenodd" }));
+const GoogleSheetIcon = ({ className }) => React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { fillRule: "evenodd", d: "M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm8 3a1 1 0 00-2 0v2H8a1 1 0 100 2h2v2a1 1 0 102 0V9h2a1 1 0 100-2h-2V5zM6 7a1 1 0 011-1h2a1 1 0 110 2H7a1 1 0 01-1-1zm1 4a1 1 0 100 2h6a1 1 0 100-2H7z", clipRule: "evenodd" }));
+const GoogleSlidesIcon = ({ className }) => React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className, viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { fillRule: "evenodd", d: "M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm4 4a1 1 0 011-1h6a1 1 0 110 2H9a1 1 0 01-1-1zm-1 5a1 1 0 100 2h6a1 1 0 100-2H7z", clipRule: "evenodd" }));
+const DownloadIcon = ({ className }) => React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className, fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" }));
+const LoadingSpinner = ({ className }) => React.createElement('svg', { className: `animate-spin ${className}`, xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24" }, React.createElement('circle', { className: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", strokeWidth: "4" }), React.createElement('path', { className: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" }));
+
+const GetIconForMimeType = ({ mimeType, className = "w-5 h-5" }) => {
+    if (mimeType.startsWith('application/vnd.google-apps.folder')) {
+        return React.createElement(FolderIcon, { className: `${className} text-blue-500` });
+    }
+    if (mimeType.startsWith('application/vnd.google-apps.document')) {
+        return React.createElement(GoogleDocIcon, { className: `${className} text-blue-600` });
+    }
+    if (mimeType.startsWith('application/vnd.google-apps.spreadsheet')) {
+        return React.createElement(GoogleSheetIcon, { className: `${className} text-green-600` });
+    }
+    if (mimeType.startsWith('application/vnd.google-apps.presentation')) {
+        return React.createElement(GoogleSlidesIcon, { className: `${className} text-yellow-500` });
+    }
+    return React.createElement(FileIcon, { className: `${className} text-gray-500` });
+};
+
+// === HELPER FUNCTIONS ===
+const formatBytes = (bytes, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
+// === MAIN APP COMPONENT ===
+const App = () => {
+  const { useState, useEffect, useCallback, useMemo } = React;
+  
+  const [user, setUser] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [breadcrumbs, setBreadcrumbs] = useState([{ id: 'root', name: 'Shared with me' }]);
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [folderSizes, setFolderSizes] = useState({});
+  const [calculatingFolders, setCalculatingFolders] = useState(new Set());
+
+  const currentFolderId = useMemo(() => breadcrumbs[breadcrumbs.length - 1].id, [breadcrumbs]);
+
+  const fetchFiles = useCallback(async (folderId) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      let q = `'${folderId}' in parents and trashed = false`;
+      if (folderId === 'root') {
+        q = 'sharedWithMe and trashed = false';
+      }
+      
+      const response = await window.gapi.client.drive.files.list({
+        q,
+        pageSize: 200,
+        fields: 'files(id, name, mimeType, modifiedTime, size, iconLink, parents)',
+        orderBy: 'folder,name',
+      });
+      setFiles(response.result.files || []);
+    } catch (err) {
+      setError(`Error fetching files: ${err.result?.error?.message || err.message}`);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const checkGapiAndGis = setInterval(() => {
+        if (window.gapi && window.gapi.load && window.google && window.google.accounts) {
+            clearInterval(checkGapiAndGis);
+            
+            // GIS Loaded Callback
+            window.tokenClient = window.google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        window.gapi.auth.setToken(tokenResponse);
+                        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                            headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            setUser({ name: data.name, email: data.email, picture: data.picture });
+                            fetchFiles('root');
+                        });
+                    }
+                },
+            });
+
+            // GAPI Loaded Callback
+            window.gapi.load('client', () => {
+                window.gapi.client.init({
+                    apiKey: API_KEY,
+                    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+                }).catch((err) => {
+                    setError(`API Client Init Error: ${err.message}`);
+                });
+            });
+        }
+    }, 100);
+
+    return () => clearInterval(checkGapiAndGis);
+  }, [fetchFiles]);
+  
+  const handleAuthClick = () => {
+    if (user) {
+      window.gapi.auth.setToken(null);
+      setUser(null);
+      setFiles([]);
+      setBreadcrumbs([{ id: 'root', name: 'Shared with me' }]);
+    } else {
+      window.tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+  };
+
+  const handleFileClick = (file) => {
+    if (file.mimeType === 'application/vnd.google-apps.folder') {
+      setBreadcrumbs([...breadcrumbs, { id: file.id, name: file.name }]);
+      fetchFiles(file.id);
+    }
+  };
+
+  const handleBreadcrumbClick = (index) => {
+    const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
+    setBreadcrumbs(newBreadcrumbs);
+    fetchFiles(newBreadcrumbs[newBreadcrumbs.length - 1].id);
+  };
+
+  const toggleFileSelection = (fileId) => {
+    const newSelection = new Set(selectedFiles);
+    if (newSelection.has(fileId)) {
+      newSelection.delete(fileId);
+    } else {
+      newSelection.add(fileId);
+    }
+    setSelectedFiles(newSelection);
+  };
+  
+  const toggleSelectAll = () => {
+    if (selectedFiles.size === files.length) {
+      setSelectedFiles(new Set());
+    } else {
+      setSelectedFiles(new Set(files.map(f => f.id)));
+    }
+  };
+
+  const calculateFolderSize = useCallback(async (folderId) => {
+    setCalculatingFolders(prev => new Set(prev).add(folderId));
+    let totalSize = 0;
+    const stack = [folderId];
+    try {
+      while (stack.length > 0) {
+        const currentId = stack.pop();
+        const response = await window.gapi.client.drive.files.list({
+          q: `'${currentId}' in parents and trashed = false`,
+          fields: 'files(id, name, mimeType, size)',
+        });
+        for (const file of response.result.files) {
+          if (file.mimeType === 'application/vnd.google-apps.folder') {
+            stack.push(file.id);
+          } else if (file.size) {
+            totalSize += parseInt(file.size, 10);
+          }
+        }
+      }
+      setFolderSizes(prev => ({ ...prev, [folderId]: totalSize }));
+    } catch (err) {
+      console.error("Failed to calculate folder size", err);
+      setError("Could not calculate folder size. API limit may have been reached.");
+    } finally {
+      setCalculatingFolders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(folderId);
+        return newSet;
+      });
+    }
+  }, []);
+
+  const downloadFile = async (file) => {
+    try {
+      let request;
+      let fileName = file.name;
+      const isGoogleDoc = Object.keys(GOOGLE_DOCS_MIMETYPES).includes(file.mimeType);
+
+      if (isGoogleDoc) {
+        const { exportMimeType, extension } = GOOGLE_DOCS_MIMETYPES[file.mimeType];
+        fileName += extension;
+        request = window.gapi.client.drive.files.export({ fileId: file.id, mimeType: exportMimeType });
+      } else {
+        request = window.gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
+      }
+
+      const response = await request;
+      const blob = new Blob([response.body], { type: response.headers['Content-Type'] });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      setError(`Error downloading ${file.name}: ${err.result?.error?.message || err.message}`);
+      console.error(err);
+    }
+  };
+
+  const downloadSelected = async () => {
+    const filesToDownload = files.filter(f => selectedFiles.has(f.id));
+    for (const file of filesToDownload) {
+        if (file.mimeType === 'application/vnd.google-apps.folder') {
+            setError(`Folder downloads are not supported yet. Please download files inside '${file.name}' individually.`);
+            continue;
+        }
+        await downloadFile(file);
+        await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  };
+
+  const renderHeader = () => React.createElement('header', { className: "bg-white dark:bg-gray-800 shadow-md p-4 flex justify-between items-center sticky top-0 z-10" },
+    React.createElement('h1', { className: "text-xl font-bold text-gray-700 dark:text-gray-200" }, "Shared Drive Downloader"),
+    React.createElement('div', null,
+      user ? React.createElement('div', { className: "flex items-center space-x-4" },
+        React.createElement('span', { className: "text-sm" }, user.name),
+        React.createElement('img', { src: user.picture, alt: "User", className: "w-8 h-8 rounded-full" }),
+        React.createElement('button', { onClick: handleAuthClick, className: "px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700" }, "Sign Out")
+      ) : React.createElement('button', { onClick: handleAuthClick, className: "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700" }, "Sign In with Google")
+    )
+  );
+
+  const renderBreadcrumbs = () => React.createElement('nav', { className: "flex items-center text-sm" },
+    breadcrumbs.map((crumb, index) =>
+      React.createElement('div', { key: crumb.id, className: "flex items-center" },
+        React.createElement('button', { onClick: () => handleBreadcrumbClick(index), className: "hover:underline" }, crumb.name),
+        index < breadcrumbs.length - 1 && React.createElement('span', { className: "mx-2 text-gray-400" }, "/")
+      )
+    )
+  );
+
+  const renderTable = () => React.createElement('div', { className: "overflow-x-auto" },
+    React.createElement('table', { className: "min-w-full divide-y divide-gray-200 dark:divide-gray-700" },
+      React.createElement('thead', { className: "bg-gray-50 dark:bg-gray-700" },
+        React.createElement('tr', null,
+          React.createElement('th', { scope: "col", className: "p-4 text-left" }, React.createElement('input', { type: "checkbox", onChange: toggleSelectAll, checked: files.length > 0 && selectedFiles.size === files.length, className: "rounded" })),
+          React.createElement('th', { scope: "col", className: "px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" }, "Name"),
+          React.createElement('th', { scope: "col", className: "px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" }, "Modified"),
+          React.createElement('th', { scope: "col", className: "px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" }, "File Size"),
+          React.createElement('th', { scope: "col", className: "relative px-6 py-3" }, React.createElement('span', { className: "sr-only" }, "Download"))
+        )
+      ),
+      React.createElement('tbody', { className: "bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" },
+        isLoading ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, className: "text-center p-8" }, React.createElement(LoadingSpinner, { className: "w-8 h-8 text-blue-500 mx-auto" }))) :
+        error ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, className: "text-center p-8 text-red-500" }, error)) :
+        files.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, className: "text-center p-8 text-gray-500" }, "This folder is empty.")) :
+        files.map(file => {
+          const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
+          const isGoogleDoc = Object.keys(GOOGLE_DOCS_MIMETYPES).includes(file.mimeType);
+          const isCalculating = calculatingFolders.has(file.id);
+          
+          return React.createElement('tr', { key: file.id, className: "hover:bg-gray-50 dark:hover:bg-gray-700/50" },
+            React.createElement('td', { className: "p-4" }, React.createElement('input', { type: "checkbox", checked: selectedFiles.has(file.id), onChange: () => toggleFileSelection(file.id), className: "rounded" })),
+            React.createElement('td', { className: "px-6 py-4 whitespace-nowrap" }, 
+                React.createElement('div', { className: "flex items-center" },
+                    React.createElement(GetIconForMimeType, { mimeType: file.mimeType, className: "w-6 h-6 mr-3 flex-shrink-0" }),
+                    React.createElement('button', { onClick: () => isFolder && handleFileClick(file), className: `text-sm font-medium text-gray-900 dark:text-white ${isFolder ? 'hover:underline' : 'cursor-default'}` }, file.name)
+                )
+            ),
+            React.createElement('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" }, new Date(file.modifiedTime).toLocaleDateString()),
+            React.createElement('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" },
+                isFolder ? 
+                    (folderSizes[file.id] !== undefined ? formatBytes(folderSizes[file.id]) : 
+                        React.createElement('button', { onClick: () => calculateFolderSize(file.id), disabled: isCalculating, className: "text-xs text-blue-500 hover:underline disabled:opacity-50 disabled:no-underline" },
+                            isCalculating ? React.createElement(LoadingSpinner, { className: "w-4 h-4 inline mr-1" }) : null,
+                            "Calculate size"
+                        )
+                    ) : 
+                    (file.size ? formatBytes(parseInt(file.size, 10)) : (isGoogleDoc ? 'Google Doc' : '--'))
+            ),
+            React.createElement('td', { className: "px-6 py-4 whitespace-nowrap text-right text-sm font-medium" },
+                !isFolder && React.createElement('button', { onClick: () => downloadFile(file), className: "text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300" },
+                    React.createElement(DownloadIcon, { className: "w-5 h-5" })
+                )
+            )
+          );
+        })
+      )
+    )
+  );
+
+  return React.createElement('div', { className: "min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans" },
+    renderHeader(),
+    React.createElement('main', { className: "p-4 md:p-8" },
+      !user ?
+        React.createElement('div', { className: "text-center p-16 bg-white dark:bg-gray-800 rounded-lg shadow" },
+          React.createElement('h2', { className: "text-2xl font-semibold mb-4" }, "Welcome!"),
+          React.createElement('p', null, "Please sign in with your Google account to view your shared files.")
+        ) :
+        React.createElement('div', { className: "bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden" },
+          React.createElement('div', { className: "p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center" },
+            renderBreadcrumbs(),
+            selectedFiles.size > 0 && React.createElement('button', { onClick: downloadSelected, className: "flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700" },
+              React.createElement(DownloadIcon, { className: "w-4 h-4 mr-2" }),
+              `Download (${selectedFiles.size})`
+            )
+          ),
+          renderTable()
+        )
+    )
+  );
+};
+
+// === RENDER THE APP ===
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+const root = ReactDOM.createRoot(rootElement);
+root.render(React.createElement(App));
+
+// --- END OF APPLICATION CODE ---
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
